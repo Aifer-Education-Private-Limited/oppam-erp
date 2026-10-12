@@ -46,5 +46,9 @@ def execute():
     # Clear dashboard body cards so they don't reference removed card breaks.
     workspace.content = "[]"
 
+    # `type` is a mandatory Select; ensure it stays "Workspace" (using set()
+    # because `type` is a Python built-in and can be unreliable as an attribute).
+    workspace.set("type", "Workspace")
+
     workspace.save(ignore_permissions=True)
     frappe.clear_cache()
