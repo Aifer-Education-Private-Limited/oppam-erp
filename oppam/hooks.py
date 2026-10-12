@@ -43,7 +43,11 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+    "Program": "public/js/program.js",
+    "Course": "public/js/course.js",
+    "Topic": "public/js/topic.js"
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -144,13 +148,16 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+    "Program": {
+        "after_insert": "oppam.oppam.doc_events.program.create_course_from_program"
+    },
+
+    "Program Enrollment": {
+        "after_insert": "oppam.oppam.doc_events.program_enrollment.create_course_enrollments",
+        "on_update": "oppam.oppam.doc_events.program_enrollment.sync_course_enrollments"
+    }
+}
 
 # Scheduled Tasks
 # ---------------
