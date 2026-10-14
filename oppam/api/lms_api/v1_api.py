@@ -87,6 +87,8 @@ def get_student_by_token(token=None):
 
 
 import frappe
+
+
 @frappe.whitelist(methods=["GET"])
 def get_topic_list(course_id=None, student_id=None):
     try:
@@ -141,7 +143,8 @@ def get_topic_list(course_id=None, student_id=None):
             fields=[
                 "content_type",
                 "content",
-                "custom_submitted_date"
+                "custom_submitted_date",
+                "custom_status"
             ]
         )
 
@@ -161,7 +164,10 @@ def get_topic_list(course_id=None, student_id=None):
                 watched_keys.add(key)
 
             elif activity.content_type == "Assignment":
-                if activity.custom_submitted_date:
+                if (
+                    activity.custom_submitted_date
+                    and activity.custom_status == "Confirmed"
+                ):
                     submitted_keys.add(key)
 
         course = frappe.get_doc("Course", course_id)
@@ -185,7 +191,7 @@ def get_topic_list(course_id=None, student_id=None):
             total_assignments = 0
             submitted_assignments = 0
 
-            # Correct child table fieldname: topic_content
+            # Topic Content child table
             for content in topic.get("topic_content") or []:
 
                 if not content.content:
