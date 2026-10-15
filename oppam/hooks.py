@@ -156,6 +156,13 @@ doc_events = {
     "Program Enrollment": {
         "after_insert": "oppam.oppam.doc_events.program_enrollment.create_course_enrollments",
         "on_update": "oppam.oppam.doc_events.program_enrollment.sync_course_enrollments"
+    },
+      "Article": {
+        "before_insert": "oppam.oppam.doc_events.article.generate_article_id"
+    },
+
+    "Video": {
+        "before_insert": "oppam.oppam.doc_events.video.generate_video_id"
     }
 }
 

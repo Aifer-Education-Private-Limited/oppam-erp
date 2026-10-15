@@ -272,7 +272,6 @@ from frappe.utils import strip_html_tags
 def build_file_url(path):
     if not path:
         return None
-
     raw_url = frappe.utils.get_url(path)
     return urllib.parse.quote(raw_url, safe=":/?=&%#")
 
@@ -321,12 +320,10 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
             })
             return
 
-        # Get Course document
         course = frappe.get_doc("Course", course_id)
 
         topic_id = None
 
-        # Find topic from Course Topic child table
         for row in course.get("topics") or []:
             if row.topic_name == topic_name or row.topic == topic_name:
                 topic_id = row.topic
@@ -351,7 +348,6 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
         # Get Topic document
         topic = frappe.get_doc("Topic", topic_id)
 
-        # Get student activities
         activities = frappe.get_all(
             "Course Activity",
             filters={
@@ -371,7 +367,7 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
             order_by="modified desc"
         )
 
-        # Store latest activity for each content
+       
         activity_map = {}
 
         for activity in activities:
@@ -388,7 +384,7 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
 
         content_list = []
 
-        # Loop through Topic Content child table
+       
         for row in topic.get("topic_content") or []:
 
             if not row.content:
@@ -403,7 +399,7 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
             if not frappe.db.exists(content_type, content_id):
                 continue
 
-            # Get content document
+           
             content_doc = frappe.get_doc(content_type, content_id)
 
             title = None
@@ -429,7 +425,7 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
                     if video_description else None
                 )
 
-                # Return video URL directly
+                
                 content_value = content_doc.get("url")
 
             elif content_type == "Assignment":
@@ -439,9 +435,14 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
                 content_value = build_file_url(
                     content_doc.get("content")
                 )
+            if content_type in ("Article", "Video"):
+                response_content_id = content_doc.get("custom_id") or content_doc.name
+            else:
+                response_content_id = content_doc.name
+
 
             content_data = {
-                "content_id": content_id,
+                "content_id": response_content_id,
                 "content_title": title,
                 "description": description,
                 "content": content_value,
