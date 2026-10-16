@@ -506,3 +506,168 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
             "contents": []
         })
         return
+
+import frappe
+
+
+@frappe.whitelist(methods=["GET"])
+def get_watched_contents(course_id=None, topic_name=None, student_id=None):
+    try:
+        if not course_id or not topic_name or not student_id:
+            frappe.local.response.update({
+                "success": False,
+                "message": "Course ID, Topic Name and Student ID are required",
+                "content_ids": []
+            })
+            return
+
+        if not frappe.db.exists("Course", course_id):
+            frappe.local.response.update({
+                "success": False,
+                "message": "Course not found",
+                "content_ids": []
+            })
+            return
+
+        if not frappe.db.exists("Student", student_id):
+            frappe.local.response.update({
+                "success": False,
+                "message": "Student not found",
+                "content_ids": []
+            })
+            return
+
+        enrollment = frappe.db.exists(
+            "Course Enrollment",
+            {
+                "student": student_id,
+                "course": course_id
+            }
+        )
+
+        if not enrollment:
+            frappe.local.response.update({
+                "success": False,
+                "message": "Student is not enrolled in this course",
+                "content_ids": []
+            })
+            return
+
+        # Get course document
+        course = frappe.get_doc("Course", course_id)
+
+        topic_id = None
+
+        for row in course.get("topics") or []:
+            if row.topic_name == topic_name or row.topic == topic_name:
+                topic_id = row.topic
+                break
+
+        if not topic_id:
+            frappe.local.response.update({
+                "success": False,
+                "message": "Topic not found in this course",
+                "content_ids": []
+            })
+            return
+
+        if not frappe.db.exists("Topic", topic_id):
+            frappe.local.response.update({
+                "success": False,
+                "message": "Topic not found",
+                "content_ids": []
+            })
+            return
+
+        topic = frappe.get_doc("Topic", topic_id)
+
+        # Get student activities
+        activities = frappe.get_all(
+            "Course Activity",
+            filters={
+                "course": course_id,
+                "student": student_id,
+                "enrollment": enrollment
+            },
+            fields=[
+                "content_type",
+                "content",
+                "custom_status"
+            ]
+        )
+
+        watched_keys = set()
+
+        for activity in activities:
+            if not activity.content:
+                continue
+
+            key = (
+                activity.content_type,
+                activity.content
+            )
+
+            if activity.content_type in ("Article", "Video"):
+                watched_keys.add(key)
+
+            # Assignment counts only when confirmed
+            elif activity.content_type == "Assignment":
+                if activity.custom_status == "Confirmed":
+                    watched_keys.add(key)
+
+        content_ids = []
+        added_ids = set()
+
+        # Loop through Topic Content child table
+        for row in topic.get("topic_content") or []:
+
+            if not row.content:
+                continue
+
+            content_type = row.content_type
+            content_id = row.content
+
+            if content_type not in ("Article", "Video", "Assignment"):
+                continue
+
+            key = (content_type, content_id)
+
+            if key not in watched_keys:
+                continue
+
+            if not frappe.db.exists(content_type, content_id):
+                continue
+
+            if content_type in ("Article", "Video"):
+                response_id = frappe.db.get_value(
+                    content_type,
+                    content_id,
+                    "custom_id"
+                ) or content_id
+
+            else:
+                response_id = content_id
+                
+            if response_id not in added_ids:
+                content_ids.append(response_id)
+                added_ids.add(response_id)
+
+        frappe.local.response.update({
+            "success": True,
+            "message": "Watched contents retrieved successfully",
+            "content_ids": content_ids
+        })
+        return
+
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Get Watched Contents API Error"
+        )
+
+        frappe.local.response.update({
+            "success": False,
+            "message": "An error occurred",
+            "content_ids": []
+        })
+        return
