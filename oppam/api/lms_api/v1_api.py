@@ -1,4 +1,8 @@
 import frappe
+import urllib.parse
+from frappe.utils import strip_html_tags
+from frappe.utils import now_datetime, get_datetime
+from frappe.utils.file_manager import save_file
 
 
 @frappe.whitelist(methods=["POST"])
@@ -84,10 +88,6 @@ def get_student_by_token(token=None):
             "message": "An error occurred"
         })
         return
-
-
-import frappe
-
 
 @frappe.whitelist(methods=["GET"])
 def get_topic_list(course_id=None, student_id=None):
@@ -263,10 +263,6 @@ def get_topic_list(course_id=None, student_id=None):
             "topics": []
         })
         return
-
-import frappe
-import urllib.parse
-from frappe.utils import strip_html_tags
 
 
 def build_file_url(path):
@@ -507,8 +503,6 @@ def get_topic_contents(course_id=None, topic_name=None, student_id=None):
         })
         return
 
-import frappe
-
 
 @frappe.whitelist(methods=["GET"])
 def get_watched_contents(course_id=None, topic_name=None, student_id=None):
@@ -647,7 +641,7 @@ def get_watched_contents(course_id=None, topic_name=None, student_id=None):
 
             else:
                 response_id = content_id
-                
+
             if response_id not in added_ids:
                 content_ids.append(response_id)
                 added_ids.add(response_id)
@@ -669,5 +663,194 @@ def get_watched_contents(course_id=None, topic_name=None, student_id=None):
             "success": False,
             "message": "An error occurred",
             "content_ids": []
+        })
+        return
+
+
+@frappe.whitelist(methods=["POST"])
+def set_watch_content(
+    student_id=None,
+    course_id=None,
+    content_type=None,
+    content_id=None,
+    submitted_date=None,
+    submitted_note=None
+):
+    try:
+        if not student_id or not course_id or not content_type or not content_id:
+            frappe.local.response.update({
+                "success": False,
+                "message": "Student ID, Course ID, Content Type and Content ID are required"
+            })
+            return
+        
+        if not frappe.db.exists("Student", student_id):
+            frappe.local.response.update({
+                "success": False,
+                "message": "Student not found"
+            })
+            return
+        
+        if not frappe.db.exists("Course", course_id):
+            frappe.local.response.update({
+                "success": False,
+                "message": "Course not found"
+            })
+            return
+
+        if content_type not in ("Article", "Video", "Assignment"):
+            frappe.local.response.update({
+                "success": False,
+                "message": "Invalid Content Type"
+            })
+            return
+
+        # Convert custom ID to original Frappe document name
+        if content_type in ("Article", "Video"):
+            resolved_content_id = frappe.db.get_value(content_type, {"custom_id": content_id},"name")
+
+            if not resolved_content_id:
+                resolved_content_id = (
+                    content_id
+                    if frappe.db.exists(content_type, content_id)
+                    else None
+                )
+
+        else:
+            resolved_content_id = (
+                content_id
+                if frappe.db.exists("Assignment", content_id)
+                else None
+            )
+            
+        if not resolved_content_id:
+            frappe.local.response.update({
+                "success": False,
+                "message": "Content not found"
+            })
+            return
+        
+        enrollment = frappe.db.get_value("Course Enrollment",{"student": student_id,"course": course_id},"name")
+
+        if not enrollment:
+            frappe.local.response.update({
+                "success": False,
+                "message": "Student is not enrolled in this course"
+            })
+            return
+
+        course = frappe.get_doc("Course", course_id)
+
+        topic_ids = [row.topic for row in course.get("topics") or [] if row.topic]
+
+        content_found = False
+
+        if topic_ids:
+            content_found = frappe.db.exists(
+                "Topic Content",
+                {
+                    "parenttype": "Topic",
+                    "parent": ["in", topic_ids],
+                    "content_type": content_type,
+                    "content": resolved_content_id
+                }
+            )
+
+        if not content_found:
+            frappe.local.response.update({
+                "success": False,
+                "message": "Content does not belong to this course"
+            })
+            return
+        
+        existing_activity = frappe.db.get_value(
+            "Course Activity",
+            {
+                "student": student_id,
+                "course": course_id,
+                "enrollment": enrollment,
+                "content_type": content_type,
+                "content": resolved_content_id
+            },
+            "name"
+        )
+
+        if existing_activity:
+            activity = frappe.get_doc("Course Activity",existing_activity)
+        else:
+            activity = frappe.new_doc("Course Activity")
+
+        activity.student = student_id
+        activity.course = course_id
+        activity.enrollment = enrollment
+        activity.content_type = content_type
+        activity.content = resolved_content_id
+        if not existing_activity:
+            activity.activity_date = now_datetime()
+
+        if content_type == "Assignment":
+            uploaded_file = frappe.request.files.get("submitted_content")
+
+            if not uploaded_file:
+                frappe.local.response.update({
+                    "success": False,
+                    "message": "Submitted Content file is required for Assignment"
+                })
+                return
+            
+            file_content = uploaded_file.read()
+
+            if not file_content:
+                frappe.local.response.update({
+                    "success": False,
+                    "message": "Uploaded file is empty"
+                })
+                return
+            
+            submission_datetime = (get_datetime(submitted_date) if submitted_date else now_datetime())
+
+            if not existing_activity:
+                activity.insert()
+
+            # The previously uploaded files are not deleted.
+            file_doc = save_file(
+                fname=uploaded_file.filename,
+                content=file_content,
+                dt="Course Activity",
+                dn=activity.name,
+                is_private=0
+            )
+
+            # Update the latest submitted file
+            activity.custom_submitted_content = file_doc.file_url
+            activity.custom_submitted_date = submission_datetime
+            activity.custom_submitted_note = submitted_note
+            activity.custom_status = "Pending"
+            activity.custom_rework_note = None
+            activity.save()
+
+        else:
+            if existing_activity:
+                activity.save()
+            else:
+                activity.insert()
+
+        frappe.local.response.update({
+            "success": True,
+            "message": (
+                "Content activity updated successfully"
+                if existing_activity
+                else "Course activity saved successfully"
+            )
+        })
+        return
+
+    except Exception:
+        frappe.db.rollback()
+        frappe.log_error(frappe.get_traceback(),"Set Watch Content API Error")
+
+        frappe.local.response.update({
+            "success": False,
+            "message": "An error occurred"
         })
         return
